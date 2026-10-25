@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartFleet GPS — Dashboard Tres Amigos</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --panel: rgba(13, 20, 36, 0.86);
+      --panel-solid: #0d1424;
+      --line: rgba(255, 255, 255, 0.09);
+      --text: #e8edf6;
+      --muted: #8793a8;
+      --green: #3fb950;
+      --green-deep: #1f6f35;
+      --amber: #f0a22e;
+      --gray: #6b768a;
+      --blue: #4aa3ff;
+      --track: rgba(255, 255, 255, 0.09);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #070b14; color: var(--text); font-family: 'Inter', system-ui, sans-serif; }
+    #map { position: absolute; inset: 0; background: #0a101c; }
+    .leaflet-container { font-family: inherit; }
+
+    .col { position: absolute; top: 14px; bottom: 14px; width: 330px; z-index: 900; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; scrollbar-width: none; pointer-events: none; }
+    .col::-webkit-scrollbar { display: none; }
+    .col > * { pointer-events: auto; flex-shrink: 0; }
+    #col-left { left: 14px; }
+    #col-right { right: 14px; }
+
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 12px 30px -8px rgba(0,0,0,.6); padding: 14px 16px; }
+    .panel h3 { font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 17px; letter-spacing: .06em; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+    .panel h3 small { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--muted); }
+
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand .logo { width: 38px; height: 38px; border-radius: 10px; background: var(--green-deep); display: grid; place-items: center; font-size: 20px; }
+    .brand b { font-family: 'Barlow Condensed', sans-serif; font-size: 19px; letter-spacing: .05em; text-transform: uppercase; display: block; line-height: 1.1; }
+    .brand span { font-size: 11px; color: var(--muted); }
+
+    /* Selected vehicle card */
+    #sel-card { padding: 0; overflow: hidden; border-width: 1.5px; }
+    #sel-card .top { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+    #sel-card .ico { width: 48px; height: 48px; border-radius: 12px; background: rgba(0,0,0,.28); display: grid; place-items: center; flex-shrink: 0; }
+    #sel-card .ico svg { width: 28px; height: 28px; }
+    #sel-card .name { font-family: 'Barlow Condensed', sans-serif; font-size: 26px; font-weight: 700; letter-spacing: .03em; line-height: 1; text-transform: uppercase; }
+    #sel-card .state { font-size: 13px; margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+    #sel-card .gmap { margin-left: auto; width: 34px; height: 34px; border-radius: 9px; background: rgba(0,0,0,.28); display: grid; place-items: center; color: inherit; text-decoration: none; font-size: 15px; }
+    #sel-card .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; background: rgba(0,0,0,.22); }
+    #sel-card .stat { padding: 10px 14px; border-right: 1px solid var(--line); }
+    #sel-card .stat:last-child { border: 0; }
+    #sel-card .stat b { font-family: 'Barlow Condensed', sans-serif; font-size: 20px; font-weight: 600; display: block; }
+    #sel-card .stat span { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+    #sel-card .addr { padding: 9px 16px 12px; font-size: 12px; color: var(--muted); background: rgba(0,0,0,.22); border-top: 1px solid var(--line); }
+    .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+    /* Fleet overview */
+    .ov { display: flex; gap: 14px; align-items: center; }
+    .donut { position: relative; width: 108px; height: 108px; flex-shrink: 0; }
+    .donut svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .donut .c { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+    .donut .c b { font-family: 'Barlow Condensed', sans-serif; font-size: 34px; line-height: 1; }
+    .donut .c span { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+    .kgrid { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+    .k b { font-family: 'Barlow Condensed', sans-serif; font-size: 26px; font-weight: 600; line-height: 1; display: flex; align-items: center; gap: 6px; }
+    .k span { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: block; margin-top: 3px; }
+    .k .bar { height: 3px; border-radius: 2px; background: var(--track); margin-top: 5px; overflow: hidden; }
+    .k .bar i { display: block; height: 100%; }
+
+    /* Bars */
+    .row { margin-bottom: 11px; }
+    .row:last-child { margin-bottom: 0; }
+    .row .lab { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+    .row .lab b { color: var(--text); font-weight: 600; }
+    .track { height: 7px; border-radius: 4px; background: var(--track); overflow: hidden; display: flex; }
+    .track i { display: block; height: 100%; }
+    .row.click { cursor: pointer; }
+    .row.click:hover .lab { color: var(--text); }
+    .row.on .lab b { color: var(--green); }
+
+    /* Stacked column chart */
+    .chart { display: flex; align-items: flex-end; gap: 10px; height: 110px; padding-top: 6px; }
+    .chart .colm { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; cursor: pointer; }
+    .chart .stack { width: 100%; max-width: 38px; display: flex; flex-direction: column-reverse; border-radius: 4px 4px 0 0; overflow: hidden; }
+    .chart .stack i { display: block; width: 100%; }
+    .chart .n { font-size: 11px; font-weight: 600; margin-bottom: 3px; }
+    .chart .cl { font-size: 10px; color: var(--muted); margin-top: 5px; text-align: center; white-space: nowrap; }
+    .chart .colm.on .cl { color: var(--green); }
+    .legend { display: flex; gap: 12px; margin-top: 10px; font-size: 10.5px; color: var(--muted); flex-wrap: wrap; }
+    .legend span { display: flex; align-items: center; gap: 5px; }
+
+    /* Lists */
+    .list { display: flex; flex-direction: column; gap: 2px; max-height: 250px; overflow-y: auto; scrollbar-width: thin; }
+    .li { display: flex; align-items: center; gap: 10px; padding: 7px 6px; border-radius: 9px; cursor: pointer; }
+    .li:hover, .li.on { background: rgba(255,255,255,.07); }
+    .li .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.07); flex-shrink: 0; }
+    .li .av svg { width: 17px; height: 17px; }
+    .li .t { flex: 1; min-width: 0; }
+    .li .t b { font-size: 13px; font-weight: 600; display: block; }
+    .li .t span { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+    .li .r { font-family: 'Barlow Condensed', sans-serif; font-size: 17px; font-weight: 600; white-space: nowrap; }
+    .empty { font-size: 12px; color: var(--muted); padding: 6px 2px; }
+
+    /* Bottom bar */
+    #bottom { position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 900; display: flex; gap: 8px; align-items: center; padding: 8px; max-width: calc(100vw - 720px); min-width: 420px; flex-wrap: wrap; justify-content: center; }
+    #bottom input { background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 9px; padding: 8px 12px; color: var(--text); font-size: 12.5px; width: 150px; outline: none; }
+    #bottom input:focus { border-color: var(--green); }
+    .chip { background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 9px; padding: 7px 11px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; }
+    .chip:hover { color: var(--text); }
+    .chip.on { background: var(--green-deep); border-color: var(--green); color: #fff; }
+
+    /* Map pins */
+    .pin { position: relative; width: 36px; height: 36px; }
+    .pin .b { width: 36px; height: 36px; border-radius: 10px; background: #1b2438; border: 2px solid var(--c); color: var(--c); display: grid; place-items: center; box-shadow: 0 4px 10px rgba(0,0,0,.55); }
+    .pin .b svg { width: 20px; height: 20px; }
+    .pin::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px; background: #1b2438; border-right: 2px solid var(--c); border-bottom: 2px solid var(--c); transform: translateX(-50%) rotate(45deg); }
+    .pin.moving .b { animation: pulse 1.8s infinite; }
+    .pin.sel .b { background: var(--c); color: #0b1220; transform: scale(1.18); }
+    .pin.sel::after { background: var(--c); }
+    .pin .code { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 700; background: rgba(8,12,22,.85); padding: 1px 5px; border-radius: 5px; white-space: nowrap; color: #fff; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(63,185,80,.55); } 70% { box-shadow: 0 0 0 11px rgba(63,185,80,0); } 100% { box-shadow: 0 0 0 0 rgba(63,185,80,0); } }
+    .leaflet-left .leaflet-control { margin-left: 358px; }
+    .leaflet-right .leaflet-control { margin-right: 358px; }
+    .leaflet-bottom .leaflet-control { margin-bottom: 20px; }
+    .leaflet-control-layers, .leaflet-bar a { background: var(--panel-solid) !important; color: var(--text) !important; border-color: var(--line) !important; }
+
+    /* Narrow screens: map on top, panels become a scrollable sheet */
+    @media (max-width: 1100px) {
+      #bottom { max-width: calc(100vw - 28px); min-width: 0; bottom: 12px; }
+    }
+    @media (max-width: 860px) {
+      .leaflet-left .leaflet-control { margin-left: 10px; }
+      .leaflet-right .leaflet-control { margin-right: 10px; }
+    }
+    @media (max-width: 860px) {
+      html, body { overflow: auto; }
+      #map { position: relative; height: 55vh; }
+      .col { position: static; width: auto; padding: 0 12px; margin-top: 12px; overflow: visible; }
+      #bottom { position: static; transform: none; margin: 12px; max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="col" id="col-left">
+    <div class="panel brand">
+      <div class="logo">🛰️</div>
+      <div><b>SmartFleet GPS</b><span>AgroIndustrial Tres Amigos</span></div>
+    </div>
+    <div class="panel" id="sel-card"></div>
+    <div class="panel">
+      <h3>Resumen de flota <small id="ov-sub"></small></h3>
+      <div class="ov">
+        <div class="donut"><svg viewBox="0 0 100 100" id="donut"></svg><div class="c"><b id="d-active">0</b><span>activos</span></div></div>
+        <div class="kgrid" id="kgrid"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Flota por tipo <small>clic para filtrar</small></h3>
+      <div class="chart" id="chart"></div>
+      <div class="legend">
+        <span><i class="dot" style="background:var(--green)"></i>En movimiento</span>
+        <span><i class="dot" style="background:#d9b13b"></i>Ralentí</span>
+        <span><i class="dot" style="background:var(--gray)"></i>Apagado</span>
+        <span><i class="dot" style="background:var(--amber)"></i>Sin señal</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="col" id="col-right">
+    <div class="panel">
+      <h3>Utilización <small id="util-sub"></small></h3>
+      <div id="util"></div>
+    </div>
+    <div class="panel">
+      <h3>Equipos por zona <small>clic para filtrar</small></h3>
+      <div id="zones"></div>
+    </div>
+    <div class="panel">
+      <h3>En movimiento ahora <small id="mov-sub"></small></h3>
+      <div class="list" id="moving"></div>
+    </div>
+    <div class="panel">
+      <h3>Atención <small>sin señal / datos viejos</small></h3>
+      <div class="list" id="alerts"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="bottom">
+    <input id="q" type="text" placeholder="Buscar equipo…" />
+    <button class="chip on" data-status="ALL">Todos</button>
+    <button class="chip" data-status="moving">En movimiento</button>
+    <button class="chip" data-status="idle">Ralentí</button>
+    <button class="chip" data-status="off">Apagados</button>
+    <button class="chip" data-status="nosignal">Sin señal</button>
+    <button class="chip" id="btn-fit">Restablecer</button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    const RAW_VEHICLES = [{"id": "rec0upYfp5j6MpDBg", "carNo": "T-59", "type": "Tractor Agricola", "lat": 10.543976, "lng": -84.419067, "speed": 0, "accStatus": 0, "statusText": "Online", "address": "Piedra Alegre, San Carlos, CR", "direction": 79, "vehicle": "R12L-F-384339", "map_url": "https://www.google.com/maps?q=10.543976,-84.419067", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "rec2etuZollUkyoyB", "carNo": "V-08", "type": "PickUp", "lat": 10.60213, "lng": -84.507953, "speed": 0, "accStatus": 1, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 187, "vehicle": "R12L-F-384334", "map_url": "https://www.google.com/maps?q=10.60213,-84.507953", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "rec2fTHxYg2wwzOEZ", "carNo": "T-217", "type": "Tractor Agricola", "lat": 10.631204, "lng": -84.473596, "speed": 8, "accStatus": 1, "statusText": "Online", "address": "El Parque, San Carlos, CR", "direction": 89, "vehicle": "R12L-F-384317", "map_url": "https://www.google.com/maps?q=10.631204,-84.473596", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "rec6p460pUdKb6cx5", "carNo": "T-238", "type": "Tractor Agricola", "lat": 10.590808, "lng": -84.508368, "speed": 0, "accStatus": 1, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 144, "vehicle": "R12L-F-384343", "map_url": "https://www.google.com/maps?q=10.590808,-84.508368", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "rec7gkLCMRwUQ51JI", "carNo": "T-243", "type": "Tractor Agricola", "lat": 10.599447, "lng": -84.512662, "speed": 0, "accStatus": 1, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 177, "vehicle": "R12L-F-384328", "map_url": "https://www.google.com/maps?q=10.599447,-84.512662", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "rec7uPnsAlx8dXMqd", "carNo": "V-202", "type": "Cami\u00f3n", "lat": 10.597777, "lng": -84.513154, "speed": 0, "accStatus": 1, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 140, "vehicle": "R12L-F-384326", "map_url": "https://www.google.com/maps?q=10.597777,-84.513154", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "rec8Qnf6YFbQWHYjV", "carNo": "T-64", "type": "Tractor Agricola", "lat": 10.547291, "lng": -84.424736, "speed": 0, "accStatus": 1, "statusText": "Online", "address": "Piedra Alegre, San Carlos, CR", "direction": 0, "vehicle": "R12L-F-384327", "map_url": "https://www.google.com/maps?q=10.547291,-84.424736", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recAeUgNxyNHbt2qE", "carNo": "T-404", "type": "Tractor Agricola", "lat": 10.632696, "lng": -84.476801, "speed": 8, "accStatus": 1, "statusText": "Online", "address": "El Parque, San Carlos, CR", "direction": 85, "vehicle": "R12L-F-384335", "map_url": "https://www.google.com/maps?q=10.632696,-84.476801", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recD9PO6Upv3sjEmY", "carNo": "T-56", "type": "Tractor Agricola", "lat": 10.548809, "lng": -84.422885, "speed": 3, "accStatus": 1, "statusText": "Online", "address": "Piedra Alegre, San Carlos, CR", "direction": 125, "vehicle": "R12L-F-384337", "map_url": "https://www.google.com/maps?q=10.548809,-84.422885", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recDXC4McvBN0qcYT", "carNo": "V-204", "type": "PickUp", "lat": 10.589876, "lng": -84.518255, "speed": 0, "accStatus": 0, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 190, "vehicle": "R12L-F-384346", "map_url": "https://www.google.com/maps?q=10.589876,-84.518255", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recDzNnY6KndpkAel", "carNo": "T-250", "type": "Tractor Agricola", "lat": 10.587287, "lng": -84.514641, "speed": 0, "accStatus": 1, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 14, "vehicle": "R12L-F-384333", "map_url": "https://www.google.com/maps?q=10.587287,-84.514641", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recFQvlb0B02uHJPu", "carNo": "T-247", "type": "Tractor Agricola", "lat": 10.595693, "lng": -84.515403, "speed": 0, "accStatus": 1, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 132, "vehicle": "R12L-F-384340", "map_url": "https://www.google.com/maps?q=10.595693,-84.515403", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recKFgqZcDlqlptJW", "carNo": "T-31", "type": "Tractor Agricola", "lat": 10.538512, "lng": -84.426378, "speed": 0, "accStatus": 0, "statusText": "Online", "address": "Piedra Alegre, San Carlos, CR", "direction": 160, "vehicle": "R12L-F-384338", "map_url": "https://www.google.com/maps?q=10.538512,-84.426378", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recLXrIu5PpDsS641", "carNo": "T-216", "type": "Tractor Agricola", "lat": 10.593313, "lng": -84.510021, "speed": 3, "accStatus": 0, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 44, "vehicle": "R12L-F-384345", "map_url": "https://www.google.com/maps?q=10.593313,-84.510021", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recML4wwGuNFZaH5O", "carNo": "T-234", "type": "Tractor Agricola", "lat": 10.697872, "lng": -84.550498, "speed": 0, "accStatus": 1, "statusText": "Offline", "address": "Sin direcci\u00f3n", "direction": 234, "vehicle": "", "map_url": "https://www.google.com/maps?q=10.697872,-84.550498", "created_at": "2026-07-13T00:14:19.192Z"}, {"id": "recMS844bLbeE4go9", "carNo": "T-219", "type": "Tractor Agricola", "lat": 10.597186, "lng": -84.5096, "speed": 3, "accStatus": 0, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 283, "vehicle": "R12L-F-384344", "map_url": "https://www.google.com/maps?q=10.597186,-84.5096", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recPfBmxG9eLjFEox", "carNo": "TO-03", "type": "Tractor Oruga", "lat": 10.535624, "lng": -84.430467, "speed": 0, "accStatus": 0, "statusText": "Online", "address": "Piedra Alegre, San Carlos, CR", "direction": 90, "vehicle": "R12L-F-384341", "map_url": "https://www.google.com/maps?q=10.535624,-84.430467", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recUzVLEfUR1sCa07", "carNo": "T-226", "type": "Tractor Agricola", "lat": 10.59246, "lng": -84.508697, "speed": 0, "accStatus": 0, "statusText": "Offline", "address": "Sin direcci\u00f3n", "direction": 49, "vehicle": "", "map_url": "https://www.google.com/maps?q=10.59246,-84.508697", "created_at": "2026-07-13T00:14:19.192Z"}, {"id": "recWLS5Iw9jw8edWG", "carNo": "T-223", "type": "Tractor Agricola", "lat": 10.46967, "lng": -84.33861, "speed": 0, "accStatus": 0, "statusText": "Online", "address": "Rio Cuarto, Alajuela, CR", "direction": 264, "vehicle": "R12L-F-384329", "map_url": "https://www.google.com/maps?q=10.46967,-84.33861", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recZCVdfQeiAOXLtH", "carNo": "T-66", "type": "Tractor Agricola", "lat": 10.541087, "lng": -84.418885, "speed": 5, "accStatus": 0, "statusText": "Online", "address": "Piedra Alegre, San Carlos, CR", "direction": 342, "vehicle": "R12L-F-384336", "map_url": "https://www.google.com/maps?q=10.541087,-84.418885", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recZoSCrVHYebYLF4", "carNo": "V-22", "type": "PickUp", "lat": 10.539676, "lng": -84.413121, "speed": 5, "accStatus": 1, "statusText": "Online", "address": "Piedra Alegre, San Carlos, CR", "direction": 162, "vehicle": "R12L-F-384324", "map_url": "https://www.google.com/maps?q=10.539676,-84.413121", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recaSEdtfJJUbLQlB", "carNo": "T-68", "type": "Tractor Agricola", "lat": 10.540462, "lng": -84.416161, "speed": 5, "accStatus": 1, "statusText": "Online", "address": "Piedra Alegre, San Carlos, CR", "direction": 37, "vehicle": "R12L-F-384321", "map_url": "https://www.google.com/maps?q=10.540462,-84.416161", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "reck2xN7inkqbURzL", "carNo": "T-41", "type": "Tractor Agricola", "lat": 10.540997, "lng": -84.428524, "speed": 8, "accStatus": 0, "statusText": "Online", "address": "Piedra Alegre, San Carlos, CR", "direction": 2, "vehicle": "R12L-F-384322", "map_url": "https://www.google.com/maps?q=10.540997,-84.428524", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "reckdzeHMjyj4SBDS", "carNo": "T-402", "type": "Tractor Agricola", "lat": 10.628862, "lng": -84.476235, "speed": 0, "accStatus": 1, "statusText": "Online", "address": "El Parque, San Carlos, CR", "direction": 331, "vehicle": "R12L-F-384332", "map_url": "https://www.google.com/maps?q=10.628862,-84.476235", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "reclEAlTwbH3oZIQf", "carNo": "V-10", "type": "Cami\u00f3n", "lat": 10.464896, "lng": -84.337402, "speed": 5, "accStatus": 0, "statusText": "Online", "address": "Rio Cuarto, Alajuela, CR", "direction": 219, "vehicle": "R12L-F-384342", "map_url": "https://www.google.com/maps?q=10.464896,-84.337402", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recrEsFHOgIKb0IZF", "carNo": "T-214", "type": "Tractor Agricola", "lat": 10.594869, "lng": -84.509701, "speed": 5, "accStatus": 1, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 310, "vehicle": "R12L-F-384318", "map_url": "https://www.google.com/maps?q=10.594869,-84.509701", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recrhBITFrTr39ZKc", "carNo": "T-70", "type": "Tractor Agricola", "lat": 10.462934, "lng": -84.32948, "speed": 0, "accStatus": 1, "statusText": "Online", "address": "Rio Cuarto, Alajuela, CR", "direction": 344, "vehicle": "R12L-F-384320", "map_url": "https://www.google.com/maps?q=10.462934,-84.32948", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recuASAeGIduUhqEQ", "carNo": "T-228", "type": "Tractor Agricola", "lat": 10.594519, "lng": -84.515326, "speed": 0, "accStatus": 0, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 144, "vehicle": "R12L-F-384331", "map_url": "https://www.google.com/maps?q=10.594519,-84.515326", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recv3bkpJnmxsaIdB", "carNo": "T-221", "type": "Tractor Agricola", "lat": 10.591137, "lng": -84.511268, "speed": 8, "accStatus": 0, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 86, "vehicle": "R12L-F-384319", "map_url": "https://www.google.com/maps?q=10.591137,-84.511268", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recx0lzh8yOKHq60B", "carNo": "T-20", "type": "Tractor Agricola", "lat": 10.543041, "lng": -84.418041, "speed": 3, "accStatus": 0, "statusText": "Online", "address": "Piedra Alegre, San Carlos, CR", "direction": 25, "vehicle": "R12L-F-384323", "map_url": "https://www.google.com/maps?q=10.543041,-84.418041", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recxeiXQIat18AsZz", "carNo": "V-17", "type": "PickUp", "lat": 10.598459, "lng": -84.510408, "speed": 3, "accStatus": 1, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 230, "vehicle": "R12L-F-384325", "map_url": "https://www.google.com/maps?q=10.598459,-84.510408", "created_at": "2026-10-04T08:00:00.000Z"}, {"id": "recygNCKX91BFEdiP", "carNo": "T-244", "type": "Tractor Agricola", "lat": 10.600613, "lng": -84.506237, "speed": 0, "accStatus": 1, "statusText": "Online", "address": "Santa Rosa, San Carlos, CR", "direction": 124, "vehicle": "R12L-F-384330", "map_url": "https://www.google.com/maps?q=10.600613,-84.506237", "created_at": "2026-10-04T08:00:00.000Z"}];
+
+    const ICONS = {
+      tractor: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="17" r="4"/><circle cx="18" cy="18" r="2"/><path d="M9 17h7M7 13V6h5l2 4h4v8M12 6v4"/></svg>`,
+      crawler: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="15" width="20" height="5" rx="2.5"/><path d="M6 15v-5h8l3 5M9 10V6h4"/></svg>`,
+      truck: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="14" height="12" rx="1"/><path d="M15 8h4l3 4v4h-7"/><circle cx="5.5" cy="18" r="2"/><circle cx="18.5" cy="18" r="2"/></svg>`,
+      pickup: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13V8h9l4 4h5v4H3v-3z"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>`
+    };
+    const TYPES = {
+      'Tractor Agricola': { label: 'Tractores', icon: ICONS.tractor },
+      'Tractor Oruga': { label: 'Oruga', icon: ICONS.crawler },
+      'Camión': { label: 'Camiones', icon: ICONS.truck },
+      'PickUp': { label: 'PickUps', icon: ICONS.pickup }
+    };
+    const typeMeta = t => TYPES[t] || { label: t, icon: ICONS.tractor };
+
+    // Estados: "Sin señal" = el rastreador reporta Offline (posición vieja); el resto sale de ACC + velocidad.
+    const STATUS = {
+      moving:   { label: 'En movimiento', color: '#3fb950' },
+      idle:     { label: 'Ralentí', color: '#d9b13b' },
+      off:      { label: 'Apagado', color: '#6b768a' },
+      nosignal: { label: 'Sin señal', color: '#f0a22e' }
+    };
+    function statusOf(v) {
+      if (v.statusText === 'Offline') return 'nosignal';
+      if (v.accStatus === 1 && v.speed > 0) return 'moving';
+      if (v.accStatus === 1) return 'idle';
+      return 'off';
+    }
+    const zoneOf = v => (v.address && v.address !== 'Sin dirección') ? v.address.split(',')[0].trim() : 'Sin dirección';
+    const pct = (n, d) => d ? Math.round(n / d * 100) : 0;
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const $ = id => document.getElementById(id);
+
+    // ---- State ----
+    const f = { status: 'ALL', type: 'ALL', zone: 'ALL', q: '' };
+    let selectedId = null;
+    const markers = new Map();
+
+    // ---- Map ----
+    const map = L.map('map', { zoomControl: false }).setView([10.59, -84.48], 12);
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
+    const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri World Imagery', maxZoom: 18 });
+    const dark = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri, HERE, Garmin', maxZoom: 16 });
+    sat.addTo(map);
+    L.control.layers({ 'Satélite': sat, 'Oscuro': dark }, null, { position: 'bottomright' }).addTo(map);
+    const group = L.featureGroup().addTo(map);
+
+    function visible() {
+      const q = f.q.toLowerCase();
+      return RAW_VEHICLES.filter(v =>
+        (f.status === 'ALL' || statusOf(v) === f.status) &&
+        (f.type === 'ALL' || v.type === f.type) &&
+        (f.zone === 'ALL' || zoneOf(v) === f.zone) &&
+        (!q || v.carNo.toLowerCase().includes(q) || v.type.toLowerCase().includes(q) || (v.address || '').toLowerCase().includes(q)));
+    }
+
+    function pinHtml(v) {
+      const st = statusOf(v);
+      return `<div class="pin ${st} ${v.id === selectedId ? 'sel' : ''}" style="--c:${STATUS[st].color}">
+        <span class="code">${esc(v.carNo)}</span><div class="b">${typeMeta(v.type).icon}</div></div>`;
+    }
+
+    function renderMap(list) {
+      group.clearLayers(); markers.clear();
+      list.forEach(v => {
+        const m = L.marker([v.lat, v.lng], {
+          icon: L.divIcon({ className: '', html: pinHtml(v), iconSize: [36, 42], iconAnchor: [18, 42] }),
+          zIndexOffset: v.id === selectedId ? 1000 : 0
+        });
+        m.on('click', () => select(v.id, false));
+        group.addLayer(m); markers.set(v.id, m);
+      });
+    }
+
+    // ---- Panels ----
+    function renderSelected() {
+      const v = RAW_VEHICLES.find(x => x.id === selectedId);
+      const el = $('sel-card');
+      if (!v) { el.style.display = 'none'; return; }
+      el.style.display = '';
+      const st = statusOf(v), c = STATUS[st].color, meta = typeMeta(v.type);
+      el.style.borderColor = c;
+      el.style.background = `linear-gradient(180deg, ${c}33, var(--panel))`;
+      el.innerHTML = `
+        <div class="top">
+          <div class="ico" style="color:${c}">${meta.icon}</div>
+          <div><div class="name">${esc(v.carNo)}</div>
+            <div class="state"><i class="dot" style="background:${c}"></i>${STATUS[st].label} · ${esc(meta.label)}</div></div>
+          <a class="gmap" href="https://www.google.com/maps?q=${v.lat},${v.lng}" target="_blank" rel="noopener" title="Abrir en Google Maps">↗</a>
+        </div>
+        <div class="stats">
+          <div class="stat"><b>${v.speed} km/h</b><span>Velocidad</span></div>
+          <div class="stat"><b>${v.accStatus ? 'ON' : 'OFF'}</b><span>Motor (ACC)</span></div>
+          <div class="stat"><b>${v.direction}°</b><span>Rumbo</span></div>
+        </div>
+        <div class="addr">${esc(v.address || 'Sin dirección')} · GPS ${esc(v.vehicle || '—')}</div>`;
+    }
+
+    function renderOverview() {
+      const all = RAW_VEHICLES, n = all.length;
+      const c = { moving: 0, idle: 0, off: 0, nosignal: 0 };
+      all.forEach(v => c[statusOf(v)]++);
+      const active = c.moving + c.idle;
+      $('d-active').textContent = active;
+      $('ov-sub').textContent = `${n} equipos`;
+      // donut: segments by status
+      const R = 40, C = 2 * Math.PI * R;
+      let off = 0, svg = `<circle cx="50" cy="50" r="${R}" fill="none" stroke="var(--track)" stroke-width="9"/>`;
+      ['moving', 'idle', 'off', 'nosignal'].forEach(k => {
+        const len = c[k] / n * C;
+        if (len > 0) svg += `<circle cx="50" cy="50" r="${R}" fill="none" stroke="${STATUS[k].color}" stroke-width="9" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}"/>`;
+        off += len;
+      });
+      $('donut').innerHTML = svg;
+      $('kgrid').innerHTML = ['moving', 'idle', 'off', 'nosignal'].map(k => `
+        <div class="k"><b style="color:${STATUS[k].color}">${c[k]}</b><span>${STATUS[k].label}</span>
+          <div class="bar"><i style="width:${pct(c[k], n)}%;background:${STATUS[k].color}"></i></div></div>`).join('');
+
+      // utilization
+      $('util-sub').textContent = `${active} de ${n} con motor ON`;
+      const rows = [['Motor encendido', active, '#3fb950'], ['En movimiento', c.moving, '#4aa3ff'], ['Sin señal GPS', c.nosignal, '#f0a22e']];
+      $('util').innerHTML = rows.map(([l, v, col]) => `
+        <div class="row"><div class="lab"><span>${l}</span><b>${pct(v, n)}% · ${v}</b></div>
+          <div class="track"><i style="width:${pct(v, n)}%;background:${col}"></i></div></div>`).join('');
+
+      // stacked chart by type
+      const types = Object.keys(TYPES).filter(t => all.some(v => v.type === t));
+      const max = Math.max(...types.map(t => all.filter(v => v.type === t).length));
+      $('chart').innerHTML = types.map(t => {
+        const g = all.filter(v => v.type === t);
+        const segs = ['moving', 'idle', 'off', 'nosignal'].map(k => {
+          const cnt = g.filter(v => statusOf(v) === k).length;
+          return cnt ? `<i style="height:${cnt / max * 74}px;background:${STATUS[k].color}"></i>` : '';
+        }).join('');
+        return `<div class="colm ${f.type === t ? 'on' : ''}" data-type="${esc(t)}"><span class="n">${g.length}</span><div class="stack">${segs}</div><span class="cl">${typeMeta(t).label}</span></div>`;
+      }).join('');
+      $('chart').querySelectorAll('.colm').forEach(el => el.onclick = () => { f.type = f.type === el.dataset.type ? 'ALL' : el.dataset.type; refresh(); });
+
+      // zones
+      const zones = {};
+      all.forEach(v => { (zones[zoneOf(v)] ||= []).push(v); });
+      const zl = Object.entries(zones).sort((a, b) => b[1].length - a[1].length);
+      const zmax = zl[0][1].length;
+      $('zones').innerHTML = zl.map(([z, g]) => {
+        const act = g.filter(v => ['moving', 'idle'].includes(statusOf(v))).length;
+        return `<div class="row click ${f.zone === z ? 'on' : ''}" data-zone="${esc(z)}"><div class="lab"><span>${esc(z)}</span><b>${g.length} <span style="color:var(--muted);font-weight:400">· ${act} ON</span></b></div>
+          <div class="track"><i style="width:${g.length / zmax * 100}%;background:var(--green)"></i></div></div>`;
+      }).join('');
+      $('zones').querySelectorAll('.row').forEach(el => el.onclick = () => { f.zone = f.zone === el.dataset.zone ? 'ALL' : el.dataset.zone; refresh(); });
+    }
+
+    function liHtml(v, right, color) {
+      const meta = typeMeta(v.type);
+      return `<div class="li ${v.id === selectedId ? 'on' : ''}" data-id="${v.id}">
+        <div class="av" style="color:${color}">${meta.icon}</div>
+        <div class="t"><b>${esc(v.carNo)}</b><span>${esc(meta.label)} · ${esc(zoneOf(v))}</span></div>
+        <div class="r" style="color:${color}">${right}</div></div>`;
+    }
+    function bindList(id) { $(id).querySelectorAll('.li').forEach(el => el.onclick = () => select(el.dataset.id, true)); }
+
+    function renderLists() {
+      const mov = RAW_VEHICLES.filter(v => statusOf(v) === 'moving').sort((a, b) => b.speed - a.speed);
+      $('mov-sub').textContent = `${mov.length} equipos`;
+      $('moving').innerHTML = mov.length ? mov.map(v => liHtml(v, v.speed + ' km/h', STATUS.moving.color)).join('') : '<div class="empty">Ningún equipo en movimiento.</div>';
+      bindList('moving');
+      const DAY = 864e5, now = Date.now();
+      const al = RAW_VEHICLES.filter(v => statusOf(v) === 'nosignal')
+        .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      $('alerts').innerHTML = al.length ? al.map(v => {
+        const d = Math.floor((now - new Date(v.created_at)) / DAY);
+        return liHtml(v, `hace ${d} d`, STATUS.nosignal.color);
+      }).join('') : '<div class="empty">Todos los rastreadores reportan.</div>';
+      bindList('alerts');
+    }
+
+    function select(id, fly) {
+      selectedId = id;
+      const v = RAW_VEHICLES.find(x => x.id === id);
+      if (fly && v) map.flyTo([v.lat, v.lng], 16, { duration: 0.8 });
+      refresh(true);
+    }
+
+    function refresh(keepView) {
+      const list = visible();
+      renderMap(list); renderSelected(); renderOverview(); renderLists();
+      document.querySelectorAll('#bottom .chip[data-status]').forEach(b => b.classList.toggle('on', b.dataset.status === f.status));
+      if (!keepView && list.length) map.fitBounds(group.getBounds(), { paddingTopLeft: [360, 80], paddingBottomRight: [360, 110], maxZoom: 15, animate: false });
+    }
+
+    // ---- Events ----
+    document.querySelectorAll('#bottom .chip[data-status]').forEach(b => b.onclick = () => { f.status = b.dataset.status; refresh(); });
+    $('q').oninput = e => { f.q = e.target.value.trim(); refresh(); };
+    $('btn-fit').onclick = () => { f.status = 'ALL'; f.type = 'ALL'; f.zone = 'ALL'; f.q = ''; $('q').value = ''; refresh(); };
+
+    // Selección inicial: el equipo en movimiento más rápido, o el primero.
+    const first = [...RAW_VEHICLES].sort((a, b) => b.speed - a.speed)[0];
+    selectedId = first && first.id;
+    refresh();
+  </script>
+</body>
+</html>
