@@ -55,6 +55,10 @@
     #sel-card .stat:last-child { border: 0; }
     #sel-card .stat b { font-family: 'Barlow Condensed', sans-serif; font-size: 20px; font-weight: 600; display: block; }
     #sel-card .stat span { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+    #sel-card .stats.s2 { border-top: 1px solid var(--line); }
+    #sel-card .stat small { display: block; font-size: 10px; color: var(--muted); margin-top: 2px; }
+    #sel-card .ficha { display: block; text-align: center; padding: 10px 16px; font-size: 12.5px; font-weight: 600; color: #fff; background: var(--green-deep); text-decoration: none; border-top: 1px solid var(--line); }
+    #sel-card .ficha:hover { background: #28823f; }
     #sel-card .addr { padding: 9px 16px 12px; font-size: 12px; color: var(--muted); background: rgba(0,0,0,.22); border-top: 1px solid var(--line); }
     .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 
@@ -279,6 +283,22 @@
     }
 
     // ---- Panels ----
+    // Horómetro, horas de encendido y link a la ficha (gps_enrich.json, generado por sync_enrich.mjs).
+    let ENRICH = {};
+    const fmt = (n, d = 1) => Number(n).toLocaleString('es-CR', { minimumFractionDigits: d, maximumFractionDigits: d });
+    const fmtFecha = iso => { const [y, m, d] = iso.split('-'); return `${+d}/${+m}`; };
+    function enrichHtml(v) {
+      const e = ENRICH[v.carNo];
+      if (!e) return '';
+      return `
+        <div class="stats s2">
+          <div class="stat"><b>${e.horometro ? fmt(e.horometro) + ' h' : '—'}</b><span>Horómetro actual</span>${e.horometroDanado ? '<small style="color:var(--amber)">Reportado dañado</small>' : ''}</div>
+          <div class="stat"><b>${fmt(e.horasDia, 1)} h</b><span>Encendido ${fmtFecha(e.fecha)}</span><small>${fmt(e.horasMovimientoDia, 1)} mov · ${fmt(e.horasRalentiDia, 1)} ralentí</small></div>
+          <div class="stat"><b>${fmt(e.horas7d, 1)} h</b><span>Encendido 7 días</span></div>
+        </div>
+        <a class="ficha" href="${esc(e.airtableUrl)}" target="_blank" rel="noopener">Ver ficha del equipo ↗</a>`;
+    }
+
     function renderSelected() {
       const v = RAW_VEHICLES.find(x => x.id === selectedId);
       const el = $('sel-card');
@@ -299,6 +319,7 @@
           <div class="stat"><b>${v.accStatus ? 'ON' : 'OFF'}</b><span>Motor (ACC)</span></div>
           <div class="stat"><b>${v.direction}°</b><span>Rumbo</span></div>
         </div>
+        ${enrichHtml(v)}
         <div class="addr">${esc(v.address || 'Sin dirección')} · GPS ${esc(v.vehicle || '—')}</div>`;
     }
 
@@ -402,6 +423,10 @@
     const first = [...RAW_VEHICLES].sort((a, b) => b.speed - a.speed)[0];
     selectedId = first && first.id;
     refresh();
+    fetch('gps_enrich.json?v=' + Date.now())
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(d => { ENRICH = d.equipos || {}; renderSelected(); })
+      .catch(() => { /* sin enriquecimiento: la tarjeta queda solo con datos GPS */ });
   </script>
 </body>
 </html>
